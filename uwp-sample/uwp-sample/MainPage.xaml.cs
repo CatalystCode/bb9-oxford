@@ -23,6 +23,7 @@ using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Imaging;
 using Windows.UI.Xaml.Navigation;
+using Newtonsoft.Json;
 
 // The Blank Page item template is documented at http://go.microsoft.com/fwlink/?LinkId=402352&clcid=0x409
 
@@ -34,7 +35,7 @@ namespace uwp_sample
     public sealed partial class MainPage : Page
     {
         private string _subscriptionKey = "9e3535b705f44c01bdc5cc7280fd570f";
-        private string _faceListNameRoot = "bb9";
+        private string _faceListNameRoot = "bb10";
         private string _storageConnectionString = "DefaultEndpointsProtocol=https;AccountName=bb9oxford;AccountKey=HXBFbF6CbLPQ6ZqGKk+ipeRV0aX64QcLcS8y/w3XRtUHbix53eh79Q0yu+vgGj2KWXUmR3vXsVpyOctWh0L7gA==;BlobEndpoint=https://bb9oxford.blob.core.windows.net/;TableEndpoint=https://bb9oxford.table.core.windows.net/;QueueEndpoint=https://bb9oxford.queue.core.windows.net/;FileEndpoint=https://bb9oxford.file.core.windows.net/";
         private string _containerName = "studio";
         private ObservableCollection<FaceListData> _faceLists = new ObservableCollection<FaceListData>();
@@ -78,8 +79,16 @@ namespace uwp_sample
 
                         try
                         {
-                            var faceresult = await faceServiceClient.AddFaceToFaceListAsync(currentFaceListId, blob.Uri.ToString(), null, face.FaceRectangle);
-                            Debug.WriteLine(faceresult.PersistedFaceId);
+                            var faceData = new FaceData
+                            {
+                                BlobUrl = blob.Uri.ToString(),
+                                FaceRectangle = face.FaceRectangle
+                            };
+
+                            var faceDataJS = JsonConvert.SerializeObject(faceData);
+
+                            var faceResult = await faceServiceClient.AddFaceToFaceListAsync(currentFaceListId, blob.Uri.ToString(), faceDataJS, face.FaceRectangle);
+                            Debug.WriteLine(faceResult.PersistedFaceId);
                         }
                         catch (Exception ex)
                         {
@@ -141,37 +150,73 @@ namespace uwp_sample
         private async void ClearFaceLists(object sender, RoutedEventArgs e)
         {
             var faceServiceClient = new FaceServiceClient(_subscriptionKey);
-            var facelists = await faceServiceClient.ListFaceListsAsync();
-            foreach (var facelist in facelists)
+            var faceLists = await faceServiceClient.ListFaceListsAsync();
+            foreach (var faceList in faceLists)
             {
-                if (!facelist.FaceListId.StartsWith(_faceListNameRoot))
-                    await faceServiceClient.DeleteFaceListAsync(facelist.FaceListId);
+                if (faceList.FaceListId.StartsWith(_faceListNameRoot))
+                {
+                    await faceServiceClient.DeleteFaceListAsync(faceList.FaceListId);
+                }
             }
             _faceLists.Clear();
-
         }
 
         private async void ImagePicker_Click(object sender, RoutedEventArgs e)
         {
             var fileOpenPicker = new FileOpenPicker();
+            fileOpenPicker.FileTypeFilter.Add(".jpg");
+            fileOpenPicker.FileTypeFilter.Add(".jpeg");
+            fileOpenPicker.FileTypeFilter.Add(".png");
             fileOpenPicker.ViewMode = PickerViewMode.Thumbnail;
             fileOpenPicker.SuggestedStartLocation = PickerLocationId.PicturesLibrary;
 
-            try
-            {
-                var storageFile = await fileOpenPicker.PickSingleFileAsync();
+            var storageFile = await fileOpenPicker.PickSingleFileAsync();
 
-                using (var stream = await storageFile.OpenAsync(FileAccessMode.Read))
+            FaceButtons.Children.Clear();
+
+            using (var stream = await storageFile.OpenAsync(FileAccessMode.Read))
+            {
+                var image = new BitmapImage();
+                image.SetSource(stream);
+                SelectedImage.Source = image;
+
+                stream.Seek(0);
+
+                var faceServiceClient = new FaceServiceClient(_subscriptionKey);
+                var faces = await faceServiceClient.DetectAsync(stream.AsStream(), true, true, new FaceAttributeType[] { FaceAttributeType.Gender, FaceAttributeType.Age, FaceAttributeType.FacialHair, FaceAttributeType.Smile });
+
+                foreach (var face in faces)
                 {
-                    var image = new BitmapImage();
-                    image.SetSource(stream);
-                    SelectedImage.Source = image;
+                    var scale = SelectedImage.ActualHeight / image.PixelHeight;
+                    var faceButton = new Button();
+                    faceButton.Width = face.FaceRectangle.Width * scale;
+                    faceButton.Height = face.FaceRectangle.Height * scale;
+                    faceButton.Margin = new Thickness(face.FaceRectangle.Left * scale + 25, face.FaceRectangle.Top * scale + 25, 0, 0);
+                    faceButton.Tag = face.FaceId;
+                    faceButton.Click += FaceBox_Click;
+                    FaceButtons.Children.Add(faceButton);
                 }
             }
-            catch (Exception ex)
-            {
+        }
 
-            }
+        private async void FaceBox_Click(object sender, RoutedEventArgs e)
+        {
+            var faceButton = (Button)sender;
+            var faceServiceClient = new FaceServiceClient(_subscriptionKey);
+            var faceLists = await faceServiceClient.ListFaceListsAsync();
+            var faceList = faceLists.First(fl => fl.Name.StartsWith(_faceListNameRoot));
+            var fl2 = await faceServiceClient.GetFaceListAsync(faceList.FaceListId);
+            var similarFaces = await faceServiceClient.FindSimilarAsync(new Guid(faceButton.Tag.ToString()), faceList.FaceListId);
+
+            SimilarFaces.ItemsSource = from pf in fl2.PersistedFaces
+                                       join sf in similarFaces
+                                       on pf.PersistedFaceId equals sf.PersistedFaceId
+                                       orderby sf.Confidence descending
+                                       select new SimilarFaceResult(pf.UserData)
+                                       {
+                                           Confidence = (int)(sf.Confidence * 100)
+                                       };
+
         }
     }
 }
