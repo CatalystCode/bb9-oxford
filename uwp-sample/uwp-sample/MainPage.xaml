@@ -7,7 +7,49 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
-        <Button Click="AddPictures">Add Pictures</Button>
-    </Grid>
+    <Pivot Title="BB9 - OXFORD">
+        <Pivot.Items>
+            <PivotItem Header="Search">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="auto"/>
+                        <RowDefinition/>
+                        <RowDefinition Height="auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Button Content="Choose Image" Width="300" Height="35" Background="#2196f3" Foreground="White" BorderBrush="Transparent" HorizontalAlignment="Center" VerticalAlignment="Top" Click="ImagePicker_Click"/>
+                    <Image x:Name="SelectedImage" Grid.Row="1"/>
+
+                </Grid>
+            </PivotItem>
+
+            <PivotItem Header="Manage">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="auto"/>
+                        <RowDefinition/>
+                        <RowDefinition Height="auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock>Face Lists</TextBlock>
+                    <ListView Grid.Row="1" x:Name="FaceLists">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding FaceListId}" TextWrapping="NoWrap" Margin="0,0,25,0"/>
+                                    <TextBlock Text="{Binding PersistedFaces}" TextWrapping="NoWrap"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <StackPanel Grid.Row="2" Orientation="Horizontal">
+                        <Button HorizontalAlignment="Center"
+                            Click="AddFaces">Add Faces</Button>
+                        <Button Click="RefreshFaceLists" Margin="20">Refresh</Button>
+                        <Button Click="ClearFaceLists">Clear</Button>
+                    </StackPanel>
+                </Grid>
+            </PivotItem>
+        </Pivot.Items>
+    </Pivot>
 </Page>
